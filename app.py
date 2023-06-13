@@ -11,9 +11,10 @@ import pdfplumber
 import language_tool_python
 import textstat
 from flask_cors import CORS, cross_origin
-
+from werkzeug.security import generate_password_hash
 import base64
 import nltk
+from werkzeug.security import check_password_hash
 
 # Descargar los paquetes necesarios de NLTK
 nltk.download('punkt')
@@ -21,9 +22,8 @@ nltk.download('punkt')
 app = Flask(__name__)
 CORS(app)
 basedir = os.path.abspath(os.path.dirname(__file__))
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:&DrYMV440OMu@localhost:3306/edutext'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:8gf5eXNZvJVNMkCvcXD6@localhost:3306/edutext'
 db = SQLAlchemy(app)
-
 
 class Usuarios(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -32,19 +32,14 @@ class Usuarios(db.Model):
     contrasenia = db.Column(db.String(50))
     tipo = db.Column(db.Enum('alumno', 'profesor', 'administrador'))
 
-
 class Grupos(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(50))
-    id_profesor = db.Column(db.Integer, db.ForeignKey('usuarios.id'))
-
+    id_profesor = db.Column(db.Integer, db.ForeignKey('Usuarios.id'))
 
 class Grupo_Alumno(db.Model):
-    id_grupo = db.Column(db.Integer, db.ForeignKey(
-        'grupos.id'), primary_key=True)
-    id_alumno = db.Column(db.Integer, db.ForeignKey(
-        'usuarios.id'), primary_key=True)
-
+    id_grupo = db.Column(db.Integer, db.ForeignKey('grupos.id'), primary_key=True)
+    id_alumno = db.Column(db.Integer, db.ForeignKey('Usuarios.id'), primary_key=True)
 
 class Cursos(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -53,12 +48,10 @@ class Cursos(db.Model):
     categoria = db.Column(db.String(40))
     id_grupo = db.Column(db.Integer, db.ForeignKey('grupos.id'))
 
-
 class Unidades(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(50))
     id_curso = db.Column(db.Integer, db.ForeignKey('cursos.id'))
-
 
 class Asignaciones(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -68,22 +61,23 @@ class Asignaciones(db.Model):
     inicio = db.Column(db.DateTime)
     fin = db.Column(db.DateTime)
 
-
 class Materiales(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(50))
     contenido = db.Column(db.Text)
     id_grupo = db.Column(db.Integer, db.ForeignKey('grupos.id'))
 
-
 @app.route('/usuarios', methods=['POST'])
 def create_usuario():
-    user_data = request.get_json()
-    new_user = Usuarios(**user_data)
-    db.session.add(new_user)
-    db.session.commit()
-    return {"id": new_user.id}, 201
+    data = request.get_json()
+    hashed_password = generate_password_hash(data['contrasenia'], method='sha256')
 
+    new_usuario = Usuarios(nombre=data['nombre'], correo=data['correo'], contrasenia=hashed_password, tipo=data['tipo'])
+    
+    db.session.add(new_usuario)
+    db.session.commit()
+
+    return jsonify({'message' : 'Nuevo usuario creado!'}), 201
 
 @app.route('/usuarios/<int:id>', methods=['GET'])
 def get_usuario(id):
@@ -99,6 +93,18 @@ def get_usuario(id):
         "tipo": user.tipo,
     }
 
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    correo = data['correo']
+    contrasenia = data['contrasenia']
+
+    user = Usuarios.query.filter_by(correo=correo).first()
+
+    if not user or not check_password_hash(user.contrasenia, contrasenia):
+        return jsonify({"error": "Correo o contraseña incorrectos"}), 400
+
+    return jsonify({"message": "Inicio de sesión exitoso", "usuario": user.nombre, "tipo": user.tipo}), 200
 
 @app.route('/usuarios/<int:id>', methods=['PUT'])
 def update_usuario(id):
@@ -115,7 +121,6 @@ def update_usuario(id):
     db.session.commit()
 
     return {"message": "Usuario actualizado"}
-
 
 @app.route('/usuarios/<int:id>', methods=['DELETE'])
 def delete_usuario(id):
@@ -139,7 +144,6 @@ def create_asignacion():
     db.session.commit()
     return {"id": new_asignacion.id}, 201
 
-
 @app.route('/asignaciones/<int:id>', methods=['GET'])
 def get_asignacion(id):
     asignacion = Asignaciones.query.get(id)
@@ -155,7 +159,6 @@ def get_asignacion(id):
         "fin": asignacion.fin.isoformat(),
     }
 
-
 @app.route('/asignaciones/<int:id>', methods=['PUT'])
 def update_asignacion(id):
     asignacion_data = request.get_json()
@@ -164,17 +167,14 @@ def update_asignacion(id):
         return {"error": "Asignación no encontrada"}, 404
 
     asignacion.nombre = asignacion_data.get("nombre", asignacion.nombre)
-    asignacion.id_unidad = asignacion_data.get(
-        "id_unidad", asignacion.id_unidad)
-    asignacion.descripcion = asignacion_data.get(
-        "descripcion", asignacion.descripcion)
+    asignacion.id_unidad = asignacion_data.get("id_unidad", asignacion.id_unidad)
+    asignacion.descripcion = asignacion_data.get("descripcion", asignacion.descripcion)
     asignacion.inicio = asignacion_data.get("inicio", asignacion.inicio)
     asignacion.fin = asignacion_data.get("fin", asignacion.fin)
 
     db.session.commit()
 
     return {"message": "Asignación actualizada"}
-
 
 @app.route('/asignaciones/<int:id>', methods=['DELETE'])
 def delete_asignacion(id):
@@ -187,7 +187,6 @@ def delete_asignacion(id):
 
     return {"message": "Asignación eliminada"}
 
-
 @app.route('/grupos', methods=['POST'])
 def create_grupo():
     grupo_data = request.get_json()
@@ -195,7 +194,6 @@ def create_grupo():
     db.session.add(new_grupo)
     db.session.commit()
     return {"id": new_grupo.id}, 201
-
 
 @app.route('/grupos/<int:id>', methods=['GET'])
 def get_grupo(id):
@@ -208,7 +206,6 @@ def get_grupo(id):
         "nombre": grupo.nombre,
         "id_profesor": grupo.id_profesor
     }
-
 
 @app.route('/grupos/<int:id>', methods=['PUT'])
 def update_grupo(id):
@@ -223,7 +220,6 @@ def update_grupo(id):
     db.session.commit()
 
     return {"message": "Grupo actualizado"}
-
 
 @app.route('/grupos/<int:id>', methods=['DELETE'])
 def delete_grupo(id):
@@ -247,7 +243,6 @@ def create_material():
     db.session.commit()
     return {"id": new_material.id}, 201
 
-
 @app.route('/materiales/<int:id>', methods=['GET'])
 def get_material(id):
     material = Materiales.query.get(id)
@@ -261,7 +256,6 @@ def get_material(id):
         "contenido": contenido_base64,
         "id_grupo": material.id_grupo
     }
-
 
 @app.route('/materiales/<int:id>', methods=['PUT'])
 def update_material(id):
@@ -280,7 +274,6 @@ def update_material(id):
 
     return {"message": "Material actualizado"}
 
-
 @app.route('/materiales/<int:id>', methods=['DELETE'])
 def delete_material(id):
     material = Materiales.query.get(id)
@@ -294,13 +287,11 @@ def delete_material(id):
 
 
 def analizador_de_texto(texto):
-    stop_words = set(stopwords.words('spanish'))
+    stop_words = set(stopwords.words('spanish')) 
     palabras = word_tokenize(texto.lower())
-    palabras = [palabra for palabra in palabras if palabra.isalnum()
-                and palabra not in stop_words]
+    palabras = [palabra for palabra in palabras if palabra.isalnum() and palabra not in stop_words]
     frecuencia_de_palabras = Counter(palabras)
     return len(palabras), frecuencia_de_palabras
-
 
 def encontrar_sinonimos(palabra):
     sinonimos = []
@@ -308,7 +299,6 @@ def encontrar_sinonimos(palabra):
         for lemma in syn.lemmas():
             sinonimos.append(lemma.name())
     return sinonimos
-
 
 def resaltar_palabras(texto, palabras_resaltar):
     palabras = word_tokenize(texto)
@@ -320,14 +310,10 @@ def resaltar_palabras(texto, palabras_resaltar):
             texto_resaltado += palabra
     return texto_resaltado
 
-
 def calcular_calificacion(indice_flesch, cantidad_de_palabras, cantidad_errores):
     # Esta es solo una propuesta para calcular la calificación, puedes ajustar la fórmula según tus necesidades.
-    calificacion = (indice_flesch / 100) * \
-        (1 - (cantidad_errores / cantidad_de_palabras))
-    # Devuelve la calificación como un porcentaje con dos decimales.
-    return round(calificacion * 100, 2)
-
+    calificacion = (indice_flesch / 100) * (1 - (cantidad_errores / cantidad_de_palabras))
+    return round(calificacion * 100, 2)  # Devuelve la calificación como un porcentaje con dos decimales.
 
 def generar_explicacion_calificacion(calificacion):
     if calificacion >= 80:
@@ -336,6 +322,8 @@ def generar_explicacion_calificacion(calificacion):
         return "El documento tiene un nivel de legibilidad adecuado pero tiene varios errores gramaticales."
     else:
         return "El documento tiene un nivel de legibilidad bajo y muchos errores gramaticales."
+
+
 
 
 if __name__ == '__main__':

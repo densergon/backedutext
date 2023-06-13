@@ -1,2 +1,2 @@
-URILAPTOP='mysql+pymysql://root:8gf5eXNZvJVNMkCvcXD6@localhost:3306/edutext'
-URIPC='mysql+pymysql://root:&DrYMV440OMu@localhost:3306/edutext'
+URIpc='mysql+pymysql://root:8gf5eXNZvJVNMkCvcXD6@localhost:3306/edutext'
+URIlap='mysql+pymysql://root:&DrYMV440OMu@localhost:3306/edutext'
