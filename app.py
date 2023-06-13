@@ -323,6 +323,61 @@ def generar_explicacion_calificacion(calificacion):
     else:
         return "El documento tiene un nivel de legibilidad bajo y muchos errores gramaticales."
 
+@app.route('/analizar', methods=['POST'])
+@cross_origin()
+def analizar():
+    archivo = request.files['archivo']
+    nombre_archivo = secure_filename(archivo.filename)
+    archivo.save(nombre_archivo)
+    texto = ""
+    with pdfplumber.open(nombre_archivo) as pdf:
+        for pagina in pdf.pages:
+            texto += pagina.extract_text()
+
+    cantidad_de_palabras, frecuencia_de_palabras = analizador_de_texto(texto)
+    num_palabras_resaltar = 10
+    texto_resaltado = resaltar_palabras(
+        texto, [palabra for palabra, _ in frecuencia_de_palabras.most_common(num_palabras_resaltar)])
+
+    resultado = []
+    for palabra, frecuencia in frecuencia_de_palabras.most_common():
+        sinonimos = encontrar_sinonimos(palabra)
+        resultado.append({
+            'palabra': palabra,
+            'frecuencia': frecuencia,
+            'sinonimos': sinonimos,
+            'porcentaje': 100 * frecuencia / cantidad_de_palabras,
+        })
+
+    # Agregamos la detección de errores gramaticales
+    tool = language_tool_python.LanguageTool('es')
+    errores_gramaticales = tool.check(texto)
+
+    # Agregamos el índice de legibilidad Flesch
+    indice_flesch = textstat.flesch_reading_ease(texto)
+
+    # Calculamos la calificación
+    calificacion = calcular_calificacion(
+        indice_flesch, cantidad_de_palabras, len(errores_gramaticales))
+    if (calificacion < 80):
+        calificacion += 20
+
+    # Generamos la explicación de la calificación
+    explicacion_calificacion = generar_explicacion_calificacion(calificacion)
+
+    resultado_json = {
+        'cantidad_de_palabras': cantidad_de_palabras,
+        'resultado': resultado,
+        'texto_resaltado': texto_resaltado,
+        # Supongamos que sólo quieres la cantidad de errores
+        'errores_gramaticales': len(errores_gramaticales),
+        'indice_flesch': indice_flesch,
+        'calificacion': calificacion,
+        'explicacion_calificacion': explicacion_calificacion
+    }
+    # Devuelve el objeto como un JSON
+    return jsonify(resultado_json)
+
 
 
 
