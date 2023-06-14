@@ -70,9 +70,7 @@ class Materiales(db.Model):
 @app.route('/usuarios', methods=['POST'])
 def create_usuario():
     data = request.get_json()
-    hashed_password = generate_password_hash(data['contrasenia'], method='sha256')
-
-    new_usuario = Usuarios(nombre=data['nombre'], correo=data['correo'], contrasenia=hashed_password, tipo=data['tipo'])
+    new_usuario = Usuarios(nombre=data['nombre'], correo=data['correo'], contrasenia=data['contrasenia'], tipo=data['tipo'])
     
     db.session.add(new_usuario)
     db.session.commit()
@@ -101,7 +99,7 @@ def login():
 
     user = Usuarios.query.filter_by(correo=correo).first()
 
-    if not user or not check_password_hash(user.contrasenia, contrasenia):
+    if not user or not contrasenia:
         return jsonify({"error": "Correo o contraseña incorrectos"}), 400
 
     return jsonify({"message": "Inicio de sesión exitoso", "usuario": user.nombre, "tipo": user.tipo}), 200
