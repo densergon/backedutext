@@ -1,7 +1,6 @@
 from flask import Flask, request
 from flask_sqlalchemy import SQLAlchemy
 from flask import Flask, abort, request, jsonify
-from flask_sqlalchemy import SQLAlchemy
 import os
 from werkzeug.utils import secure_filename
 from collections import Counter
@@ -11,10 +10,11 @@ import pdfplumber
 import language_tool_python
 import textstat
 from flask_cors import CORS, cross_origin
-from werkzeug.security import generate_password_hash
-import base64
 import nltk
-from werkzeug.security import check_password_hash
+from models import db, Usuario, Grupo, GrupoAlumno, Curso, Unidad, Asignacion, Material,AsignacionEntregada
+from datetime import datetime
+
+
 
 # Descargar los paquetes necesarios de NLTK
 nltk.download('punkt')
@@ -22,268 +22,10 @@ nltk.download('punkt')
 app = Flask(__name__)
 CORS(app)
 basedir = os.path.abspath(os.path.dirname(__file__))
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:8gf5eXNZvJVNMkCvcXD6@localhost:3306/edutext'
-db = SQLAlchemy(app)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:8gf5eXNZvJVNMkCvcXD6@localhost:3306/edutext'    
+db.init_app(app)  
 
-class Usuarios(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    nombre = db.Column(db.String(60))
-    correo = db.Column(db.String(50))
-    contrasenia = db.Column(db.String(50))
-    tipo = db.Column(db.Enum('alumno', 'profesor', 'administrador'))
-
-class Grupos(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    nombre = db.Column(db.String(50))
-    id_profesor = db.Column(db.Integer, db.ForeignKey('Usuarios.id'))
-
-class Grupo_Alumno(db.Model):
-    id_grupo = db.Column(db.Integer, db.ForeignKey('grupos.id'), primary_key=True)
-    id_alumno = db.Column(db.Integer, db.ForeignKey('Usuarios.id'), primary_key=True)
-
-class Cursos(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    nombre = db.Column(db.String(50))
-    descripcion = db.Column(db.String(50))
-    categoria = db.Column(db.String(40))
-    id_grupo = db.Column(db.Integer, db.ForeignKey('grupos.id'))
-
-class Unidades(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    nombre = db.Column(db.String(50))
-    id_curso = db.Column(db.Integer, db.ForeignKey('cursos.id'))
-
-class Asignaciones(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    nombre = db.Column(db.String(50))
-    id_unidad = db.Column(db.Integer, db.ForeignKey('unidades.id'))
-    descripcion = db.Column(db.String(80))
-    inicio = db.Column(db.DateTime)
-    fin = db.Column(db.DateTime)
-
-class Materiales(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    nombre = db.Column(db.String(50))
-    contenido = db.Column(db.Text)
-    id_grupo = db.Column(db.Integer, db.ForeignKey('grupos.id'))
-
-@app.route('/usuarios', methods=['POST'])
-def create_usuario():
-    data = request.get_json()
-    new_usuario = Usuarios(nombre=data['nombre'], correo=data['correo'], contrasenia=data['contrasenia'], tipo=data['tipo'])
-    
-    db.session.add(new_usuario)
-    db.session.commit()
-
-    return jsonify({'message' : 'Nuevo usuario creado!'}), 201
-
-@app.route('/usuarios/<int:id>', methods=['GET'])
-def get_usuario(id):
-    user = Usuarios.query.get(id)
-    if user is None:
-        return {"error": "Usuario no encontrado"}, 404
-
-    return {
-        "id": user.id,
-        "nombre": user.nombre,
-        "correo": user.correo,
-        "contrasenia": user.contrasenia,
-        "tipo": user.tipo,
-    }
-
-@app.route('/login', methods=['POST'])
-def login():
-    data = request.get_json()
-    correo = data['correo']
-    contrasenia = data['contrasenia']
-
-    user = Usuarios.query.filter_by(correo=correo).first()
-
-    if not user or not contrasenia:
-        return jsonify({"error": "Correo o contraseña incorrectos"}), 400
-
-    return jsonify({"message": "Inicio de sesión exitoso", "usuario": user.nombre, "tipo": user.tipo}), 200
-
-@app.route('/usuarios/<int:id>', methods=['PUT'])
-def update_usuario(id):
-    user_data = request.get_json()
-    user = Usuarios.query.get(id)
-    if user is None:
-        return {"error": "Usuario no encontrado"}, 404
-
-    user.nombre = user_data.get("nombre", user.nombre)
-    user.correo = user_data.get("correo", user.correo)
-    user.contrasenia = user_data.get("contrasenia", user.contrasenia)
-    user.tipo = user_data.get("tipo", user.tipo)
-
-    db.session.commit()
-
-    return {"message": "Usuario actualizado"}
-
-@app.route('/usuarios/<int:id>', methods=['DELETE'])
-def delete_usuario(id):
-    user = Usuarios.query.get(id)
-    if user is None:
-        return {"error": "Usuario no encontrado"}, 404
-
-    db.session.delete(user)
-    db.session.commit()
-
-    return {"message": "Usuario eliminado"}
-
-
-# Continuar con otros endpoints
-
-@app.route('/asignaciones', methods=['POST'])
-def create_asignacion():
-    asignacion_data = request.get_json()
-    new_asignacion = Asignaciones(**asignacion_data)
-    db.session.add(new_asignacion)
-    db.session.commit()
-    return {"id": new_asignacion.id}, 201
-
-@app.route('/asignaciones/<int:id>', methods=['GET'])
-def get_asignacion(id):
-    asignacion = Asignaciones.query.get(id)
-    if asignacion is None:
-        return {"error": "Asignación no encontrada"}, 404
-
-    return {
-        "id": asignacion.id,
-        "nombre": asignacion.nombre,
-        "id_unidad": asignacion.id_unidad,
-        "descripcion": asignacion.descripcion,
-        "inicio": asignacion.inicio.isoformat(),
-        "fin": asignacion.fin.isoformat(),
-    }
-
-@app.route('/asignaciones/<int:id>', methods=['PUT'])
-def update_asignacion(id):
-    asignacion_data = request.get_json()
-    asignacion = Asignaciones.query.get(id)
-    if asignacion is None:
-        return {"error": "Asignación no encontrada"}, 404
-
-    asignacion.nombre = asignacion_data.get("nombre", asignacion.nombre)
-    asignacion.id_unidad = asignacion_data.get("id_unidad", asignacion.id_unidad)
-    asignacion.descripcion = asignacion_data.get("descripcion", asignacion.descripcion)
-    asignacion.inicio = asignacion_data.get("inicio", asignacion.inicio)
-    asignacion.fin = asignacion_data.get("fin", asignacion.fin)
-
-    db.session.commit()
-
-    return {"message": "Asignación actualizada"}
-
-@app.route('/asignaciones/<int:id>', methods=['DELETE'])
-def delete_asignacion(id):
-    asignacion = Asignaciones.query.get(id)
-    if asignacion is None:
-        return {"error": "Asignación no encontrada"}, 404
-
-    db.session.delete(asignacion)
-    db.session.commit()
-
-    return {"message": "Asignación eliminada"}
-
-@app.route('/grupos', methods=['POST'])
-def create_grupo():
-    grupo_data = request.get_json()
-    new_grupo = Grupos(**grupo_data)
-    db.session.add(new_grupo)
-    db.session.commit()
-    return {"id": new_grupo.id}, 201
-
-@app.route('/grupos/<int:id>', methods=['GET'])
-def get_grupo(id):
-    grupo = Grupos.query.get(id)
-    if grupo is None:
-        return {"error": "Grupo no encontrado"}, 404
-
-    return {
-        "id": grupo.id,
-        "nombre": grupo.nombre,
-        "id_profesor": grupo.id_profesor
-    }
-
-@app.route('/grupos/<int:id>', methods=['PUT'])
-def update_grupo(id):
-    grupo_data = request.get_json()
-    grupo = Grupos.query.get(id)
-    if grupo is None:
-        return {"error": "Grupo no encontrado"}, 404
-
-    grupo.nombre = grupo_data.get("nombre", grupo.nombre)
-    grupo.id_profesor = grupo_data.get("id_profesor", grupo.id_profesor)
-
-    db.session.commit()
-
-    return {"message": "Grupo actualizado"}
-
-@app.route('/grupos/<int:id>', methods=['DELETE'])
-def delete_grupo(id):
-    grupo = Grupos.query.get(id)
-    if grupo is None:
-        return {"error": "Grupo no encontrado"}, 404
-
-    db.session.delete(grupo)
-    db.session.commit()
-
-    return {"message": "Grupo eliminado"}
-
-
-@app.route('/materiales', methods=['POST'])
-def create_material():
-    material_data = request.get_json()
-    contenido_base64 = material_data.get('contenido', '')
-    material_data['contenido'] = base64.b64decode(contenido_base64)
-    new_material = Materiales(**material_data)
-    db.session.add(new_material)
-    db.session.commit()
-    return {"id": new_material.id}, 201
-
-@app.route('/materiales/<int:id>', methods=['GET'])
-def get_material(id):
-    material = Materiales.query.get(id)
-    if material is None:
-        return {"error": "Material no encontrado"}, 404
-
-    contenido_base64 = base64.b64encode(material.contenido).decode()
-    return {
-        "id": material.id,
-        "nombre": material.nombre,
-        "contenido": contenido_base64,
-        "id_grupo": material.id_grupo
-    }
-
-@app.route('/materiales/<int:id>', methods=['PUT'])
-def update_material(id):
-    material_data = request.get_json()
-    material = Materiales.query.get(id)
-    if material is None:
-        return {"error": "Material no encontrado"}, 404
-
-    material.nombre = material_data.get("nombre", material.nombre)
-    if 'contenido' in material_data:
-        contenido_base64 = material_data['contenido']
-        material.contenido = base64.b64decode(contenido_base64)
-    material.id_grupo = material_data.get("id_grupo", material.id_grupo)
-
-    db.session.commit()
-
-    return {"message": "Material actualizado"}
-
-@app.route('/materiales/<int:id>', methods=['DELETE'])
-def delete_material(id):
-    material = Materiales.query.get(id)
-    if material is None:
-        return {"error": "Material no encontrado"}, 404
-
-    db.session.delete(material)
-    db.session.commit()
-
-    return {"message": "Material eliminado"}
-
-
+#Funciones para el analizador del archivo
 def analizador_de_texto(texto):
     stop_words = set(stopwords.words('spanish')) 
     palabras = word_tokenize(texto.lower())
@@ -375,6 +117,261 @@ def analizar():
     }
     # Devuelve el objeto como un JSON
     return jsonify(resultado_json)
+
+
+#Endpoints bd api
+
+# Registrar un nuevo usuario
+@app.route('/usuarios', methods=['POST'])
+def registrar_usuario():
+    data = request.get_json()
+    nuevo_usuario = Usuario(nombre=data['nombre'], correo=data['correo'], contrasenia=data['contrasenia'], tipo=data['tipo'])
+    db.session.add(nuevo_usuario)
+    db.session.commit()
+    return jsonify({"message": "Usuario creado exitosamente"}), 201
+
+# Iniciar sesión
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    usuario = Usuario.query.filter_by(correo=data['correo']).first()
+    if usuario and usuario.contrasenia == data['contrasenia']:
+        return jsonify({"message": "Inicio de sesión exitoso", "usuario": usuario.nombre, "tipo": usuario.tipo}), 200
+    else:
+        return jsonify({"message": "Correo o contraseña incorrectos"}), 400
+
+# Obtener el perfil del usuario
+@app.route('/usuarios/<int:id>', methods=['GET'])
+def obtener_usuario(id):
+    usuario = Usuario.query.get(id)
+    if usuario is None:
+        return jsonify({"message": "Usuario no encontrado"}), 404
+    else:
+        return jsonify({"nombre": usuario.nombre, "correo": usuario.correo, "tipo": usuario.tipo}), 200
+
+# Actualizar el perfil del usuario
+@app.route('/usuarios/<int:id>', methods=['PUT'])
+def actualizar_usuario(id):
+    data = request.get_json()
+    usuario = Usuario.query.get(id)
+    if usuario is None:
+        return jsonify({"message": "Usuario no encontrado"}), 404
+    else:
+        usuario.nombre = data['nombre']
+        usuario.correo = data['correo']
+        usuario.contrasenia = data['contrasenia']
+        usuario.tipo = data['tipo']
+        db.session.commit()
+        return jsonify({"message": "Perfil actualizado exitosamente"}), 200
+
+# Eliminar un usuario
+@app.route('/usuarios/<int:id>', methods=['DELETE'])
+def eliminar_usuario(id):
+    usuario = Usuario.query.get(id)
+    if usuario is None:
+        return jsonify({"message": "Usuario no encontrado"}), 404
+    else:
+        db.session.delete(usuario)
+        db.session.commit()
+        return jsonify({"message": "Usuario eliminado exitosamente"}), 200
+
+
+@app.route('/grupos', methods=['POST'])
+def crear_grupo():
+    data = request.get_json()
+    nuevo_grupo = Grupo(
+        nombre=data['nombre'],
+        id_profesor=data['id_profesor']
+    )
+    db.session.add(nuevo_grupo)
+    db.session.commit()
+    return jsonify({"message": "Grupo creado exitosamente"}), 201
+
+
+@app.route('/grupos/<int:grupo_id>', methods=['GET'])
+def obtener_grupo(grupo_id):
+    grupo = Grupo.query.get(grupo_id)
+    if grupo is None:
+        return jsonify({"message": "Grupo no encontrado"}), 404
+    return jsonify({"nombre": grupo.nombre, "id_profesor": grupo.id_profesor}), 200
+
+
+@app.route('/grupos', methods=['GET'])
+def obtener_todos_los_grupos():
+    grupos = Grupo.query.all()
+    result = []
+    for grupo in grupos:
+        result.append({"id": grupo.id, "nombre": grupo.nombre, "id_profesor": grupo.id_profesor})
+    return jsonify(result), 200
+
+
+@app.route('/grupos/<int:grupo_id>', methods=['PUT'])
+def actualizar_grupo(grupo_id):
+    data = request.get_json()
+    grupo = Grupo.query.get(grupo_id)
+    if grupo is None:
+        return jsonify({"message": "Grupo no encontrado"}), 404
+
+    grupo.nombre = data['nombre']
+    grupo.id_profesor = data['id_profesor']
+    db.session.commit()
+    return jsonify({"message": "Grupo actualizado exitosamente"}), 200
+
+
+@app.route('/grupos/<int:grupo_id>', methods=['DELETE'])
+def eliminar_grupo(grupo_id):
+    grupo = Grupo.query.get(grupo_id)
+    if grupo is None:
+        return jsonify({"message": "Grupo no encontrado"}), 404
+
+    db.session.delete(grupo)
+    db.session.commit()
+    return jsonify({"message": "Grupo eliminado exitosamente"}), 200
+
+
+@app.route('/grupos/<int:grupo_id>/alumnos', methods=['POST'])
+def agregar_alumno_a_grupo(grupo_id):
+    data = request.get_json()
+    alumno_id = data['alumno_id']
+    nuevo_registro = GrupoAlumno(id_grupo=grupo_id, id_alumno=alumno_id)
+    db.session.add(nuevo_registro)
+    db.session.commit()
+    return jsonify({"message": "Alumno añadido al grupo exitosamente"}), 201
+
+@app.route('/grupos/<int:grupo_id>/alumnos', methods=['GET'])
+def obtener_alumnos_de_grupo(grupo_id):
+    registros = GrupoAlumno.query.filter_by(id_grupo=grupo_id).all()
+    result = []
+    for registro in registros:
+        alumno = Usuario.query.get(registro.id_alumno)
+        result.append({"id": alumno.id, "nombre": alumno.nombre, "correo": alumno.correo})
+    return jsonify(result), 200
+
+@app.route('/grupos/<int:grupo_id>/alumnos/<int:alumno_id>', methods=['DELETE'])
+def eliminar_alumno_de_grupo(grupo_id, alumno_id):
+    registro = GrupoAlumno.query.filter_by(id_grupo=grupo_id, id_alumno=alumno_id).first()
+    if registro is None:
+        return jsonify({"message": "Registro no encontrado"}), 404
+
+    db.session.delete(registro)
+    db.session.commit()
+    return jsonify({"message": "Alumno eliminado del grupo exitosamente"}), 200
+
+@app.route('/asignaciones', methods=['POST'])
+def crear_asignacion():
+    data = request.get_json()
+    nueva_asignacion = Asignacion(
+        nombre=data['nombre'],
+        id_unidad=data['id_unidad'],
+        descripcion=data['descripcion'],
+        inicio=datetime.strptime(data['inicio'], "%Y-%m-%dT%H:%M:%S"),
+        fin=datetime.strptime(data['fin'], "%Y-%m-%dT%H:%M:%S")
+    )
+    db.session.add(nueva_asignacion)
+    db.session.commit()
+    return jsonify({"message": "Asignación creada exitosamente"}), 201
+
+@app.route('/asignaciones/<int:asignacion_id>', methods=['GET'])
+def obtener_asignacion(asignacion_id):
+    asignacion = Asignacion.query.get(asignacion_id)
+    if asignacion is None:
+        return jsonify({"message": "Asignación no encontrada"}), 404
+    return jsonify({
+        "nombre": asignacion.nombre,
+        "id_unidad": asignacion.id_unidad,
+        "descripcion": asignacion.descripcion,
+        "inicio": asignacion.inicio.isoformat(),
+        "fin": asignacion.fin.isoformat()
+    }), 200
+
+@app.route('/asignaciones', methods=['GET'])
+def obtener_todas_las_asignaciones():
+    asignaciones = Asignacion.query.all()
+    result = []
+    for asignacion in asignaciones:
+        result.append({
+            "id": asignacion.id,
+            "nombre": asignacion.nombre,
+            "id_unidad": asignacion.id_unidad,
+            "descripcion": asignacion.descripcion,
+            "inicio": asignacion.inicio.isoformat(),
+            "fin": asignacion.fin.isoformat()
+        })
+    return jsonify(result), 200
+
+@app.route('/asignaciones/<int:asignacion_id>', methods=['PUT'])
+def actualizar_asignacion(asignacion_id):
+    data = request.get_json()
+    asignacion = Asignacion.query.get(asignacion_id)
+    if asignacion is None:
+        return jsonify({"message": "Asignación no encontrada"}), 404
+
+    asignacion.nombre = data['nombre']
+    asignacion.id_unidad = data['id_unidad']
+    asignacion.descripcion = data['descripcion']
+    asignacion.inicio = datetime.strptime(data['inicio'], "%Y-%m-%dT%H:%M:%S")
+    asignacion.fin = datetime.strptime(data['fin'], "%Y-%m-%dT%H:%M:%S")
+    db.session.commit()
+    return jsonify({"message": "Asignación actualizada exitosamente"}), 200
+
+@app.route('/asignaciones/<int:asignacion_id>', methods=['DELETE'])
+def eliminar_asignacion(asignacion_id):
+    asignacion = Asignacion.query.get(asignacion_id)
+    if asignacion is None:
+        return jsonify({"message": "Asignación no encontrada"}), 404
+
+    db.session.delete(asignacion)
+    db.session.commit()
+    return jsonify({"message": "Asignación eliminada exitosamente"}), 200
+
+
+@app.route('/entregas_asignaciones', methods=['POST'])
+def crear_entrega_asignacion():
+    data = request.get_json()
+    nueva_entrega = AsignacionEntregada(
+        nota=data['nota'],
+        id_asignacion=data['id_asignacion'],
+        id_alumno=data['id_alumno'],
+        entrega=data['entrega']
+    )
+    db.session.add(nueva_entrega)
+    db.session.commit()
+    return jsonify({"message": "Entrega de asignación creada exitosamente"}), 201
+
+@app.route('/entregas_asignaciones/<int:entrega_id>', methods=['GET'])
+def obtener_entrega_asignacion(entrega_id):
+    entrega = AsignacionEntregada.query.get(entrega_id)
+    if entrega is None:
+        return jsonify({"message": "Entrega de asignación no encontrada"}), 404
+    return jsonify({
+        "nota": entrega.nota,
+        "id_asignacion": entrega.id_asignacion,
+        "id_alumno": entrega.id_alumno,
+        "entrega": entrega.entrega
+    }), 200
+
+@app.route('/materiales', methods=['POST'])
+def crear_material():
+    data = request.get_json()
+    nuevo_material = Material(
+        nombre=data['nombre'],
+        contenido=data['contenido'],
+        id_curso=data['id_curso']
+    )
+    db.session.add(nuevo_material)
+    db.session.commit()
+    return jsonify({"message": "Material creado exitosamente"}), 201
+
+@app.route('/materiales/<int:material_id>', methods=['GET'])
+def obtener_material(material_id):
+    material = Material.query.get(material_id)
+    if material is None:
+        return jsonify({"message": "Material no encontrado"}), 404
+    return jsonify({
+        "nombre": material.nombre,
+        "contenido": material.contenido,
+        "id_curso": material.id_curso
+    }), 200
 
 
 
