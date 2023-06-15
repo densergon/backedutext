@@ -22,7 +22,9 @@ nltk.download('punkt')
 app = Flask(__name__)
 CORS(app)
 basedir = os.path.abspath(os.path.dirname(__file__))
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:8gf5eXNZvJVNMkCvcXD6@localhost:3306/edutext'    
+pc='&DrYMV440OMu'
+laptop='8gf5eXNZvJVNMkCvcXD6'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:'+pc+'@localhost:3306/edutext'    
 db.init_app(app)  
 
 #Funciones para el analizador del archivo
@@ -130,15 +132,15 @@ def registrar_usuario():
     db.session.commit()
     return jsonify({"message": "Usuario creado exitosamente"}), 201
 
-# Iniciar sesión
 @app.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
     usuario = Usuario.query.filter_by(correo=data['correo']).first()
     if usuario and usuario.contrasenia == data['contrasenia']:
-        return jsonify({"message": "Inicio de sesión exitoso", "usuario": usuario.nombre, "tipo": usuario.tipo}), 200
+        return jsonify({"message": "Inicio de sesión exitoso", "usuario": usuario.nombre, "tipo": usuario.tipo, "id": usuario.id}), 200
     else:
         return jsonify({"message": "Correo o contraseña incorrectos"}), 400
+
 
 # Obtener el perfil del usuario
 @app.route('/usuarios/<int:id>', methods=['GET'])
@@ -174,6 +176,21 @@ def eliminar_usuario(id):
         db.session.delete(usuario)
         db.session.commit()
         return jsonify({"message": "Usuario eliminado exitosamente"}), 200
+
+@app.route('/profesores', methods=['GET'])
+def get_profesores():
+    profesores = Usuario.query.filter_by(tipo='profesor').all()
+    return jsonify([{'id': profesor.id, 'nombre': profesor.nombre} for profesor in profesores])
+
+@app.route('/grupos/<int:grupo_id>/profesor', methods=['GET'])
+def obtener_profesor_grupo(grupo_id):
+    grupo = Grupo.query.get(grupo_id)
+    if grupo is None:
+        return jsonify({"error": "Grupo no encontrado"}), 404
+    profesor = Usuario.query.get(grupo.id_profesor)
+    if profesor is None:
+        return jsonify({"error": "Profesor no encontrado"}), 404
+    return jsonify({"nombre": profesor.nombre}), 200
 
 
 @app.route('/grupos', methods=['POST'])
@@ -256,6 +273,8 @@ def eliminar_alumno_de_grupo(grupo_id, alumno_id):
     db.session.delete(registro)
     db.session.commit()
     return jsonify({"message": "Alumno eliminado del grupo exitosamente"}), 200
+
+
 
 @app.route('/asignaciones', methods=['POST'])
 def crear_asignacion():
