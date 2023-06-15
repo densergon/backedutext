@@ -350,17 +350,27 @@ def obtener_entrega_asignacion(entrega_id):
         "entrega": entrega.entrega
     }), 200
 
+from models import db, Material
+
 @app.route('/materiales', methods=['POST'])
-def crear_material():
-    data = request.get_json()
-    nuevo_material = Material(
-        nombre=data['nombre'],
-        contenido=data['contenido'],
-        id_curso=data['id_curso']
-    )
-    db.session.add(nuevo_material)
-    db.session.commit()
-    return jsonify({"message": "Material creado exitosamente"}), 201
+def agregar_material():
+    if 'contenido' not in request.files:
+        return jsonify({"message": "No file part"}), 400
+    file = request.files['contenido']
+    if file.filename == '':
+        return jsonify({"message": "No selected file"}), 400
+    if file:
+        contenido = file.read()
+        nombre = request.form.get('nombre')
+        idcurso = request.form.get('idcurso')
+        nuevo_material = Material(nombre=nombre, contenido=contenido, id_curso=idcurso)
+        db.session.add(nuevo_material)
+        db.session.commit()
+    
+        return jsonify({"message": "Material creado exitosamente!", "nombre": nombre, "idcurso": idcurso}), 201
+    else:
+        return jsonify({"message": "Ocurrió un error al subir el archivo."}), 500
+
 
 @app.route('/materiales/<int:material_id>', methods=['GET'])
 def obtener_material(material_id):
