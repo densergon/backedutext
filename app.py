@@ -456,6 +456,10 @@ def eliminar_curso(id):
         db.session.commit()
         return jsonify({"message": "Curso eliminado exitosamente"}), 200
 
+@app.route('/profesores/<int:id_profesor>/grupos', methods=['GET'])
+def get_profesor_grupos(id_profesor):
+    grupos = Grupo.query.filter_by(id_profesor=id_profesor).all()
+    return jsonify(Grupo.grupos)
 
 if __name__ == '__main__':
     app.run(debug=True)
