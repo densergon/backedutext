@@ -21,10 +21,9 @@ nltk.download('punkt')
 
 app = Flask(__name__)
 CORS(app)
+password='dmi3d2i09id32'
 basedir = os.path.abspath(os.path.dirname(__file__))
-pc='&DrYMV440OMu'
-laptop='8gf5eXNZvJVNMkCvcXD6'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:'+pc+'@localhost:3306/edutext'    
+app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:'+password+'@localhost:3306/edutext'    
 db.init_app(app)  
 
 #Funciones para el analizador del archivo
@@ -369,7 +368,6 @@ def obtener_entrega_asignacion(entrega_id):
         "entrega": entrega.entrega
     }), 200
 
-from models import db, Material
 
 @app.route('/materiales', methods=['POST'])
 def agregar_material():
@@ -402,7 +400,61 @@ def obtener_material(material_id):
         "id_curso": material.id_curso
     }), 200
 
+# Obtener todos los cursos
+@app.route('/cursos', methods=['GET'])
+def obtener_cursos():
+    cursos = Curso.query.all()
+    result = [curso.to_dict() for curso in cursos]  # Suponiendo que tienes un método to_dict() en tu modelo Curso
+    return jsonify(result), 200
 
+# Obtener un curso específico
+@app.route('/cursos/<int:id>', methods=['GET'])
+def obtener_curso(id):
+    curso = Curso.query.get(id)
+    if curso is None:
+        return jsonify({"message": "Curso no encontrado"}), 404
+    else:
+        return jsonify(curso.to_dict()), 200
+
+# Crear un nuevo curso
+@app.route('/cursos', methods=['POST'])
+def crear_curso():
+    data = request.get_json()
+    nuevo_curso = Curso(
+        nombre=data['nombre'],
+        descripcion=data['descripcion'],
+        categoria=data['categoria'],
+        id_grupo=data['id_grupo']
+    )
+    db.session.add(nuevo_curso)
+    db.session.commit()
+    return jsonify({"message": "Curso creado exitosamente", "curso": nuevo_curso.to_dict()}), 201
+
+# Actualizar un curso existente
+@app.route('/cursos/<int:id>', methods=['PUT'])
+def actualizar_curso(id):
+    data = request.get_json()
+    curso = Curso.query.get(id)
+    if curso is None:
+        return jsonify({"message": "Curso no encontrado"}), 404
+    else:
+        curso.nombre = data['nombre']
+        curso.descripcion = data['descripcion']
+        curso.categoria = data['categoria']
+        curso.id_grupo = data['id_grupo']
+        db.session.commit()
+        return jsonify({"message": "Curso actualizado exitosamente", "curso": curso.to_dict()}), 200
+
+# Eliminar un curso
+@app.route('/cursos/<int:id>', methods=['DELETE'])
+def eliminar_curso(id):
+    curso = Curso.query.get(id)
+    if curso is None:
+        return jsonify({"message": "Curso no encontrado"}), 404
+    else:
+        db.session.delete(curso)
+        db.session.commit()
+        return jsonify({"message": "Curso eliminado exitosamente"}), 200
 
 
 if __name__ == '__main__':
